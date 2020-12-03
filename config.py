@@ -7,6 +7,7 @@ import json
 import platform
 import re
 import yaml
+import threading
 from category import *
 from constants import *
 from exception import exception, ConfigException
@@ -21,7 +22,25 @@ PATH_SPLIT = "/"
 MODEL_CONFIG_NAME = "model.yaml"
 IGNORE_FILES = ['.DS_Store']
 
-CORE_VERSION = '20200626'
+
+def resource_path(relative_path):
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except AttributeError:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
+
+def get_version():
+    version_file_path = resource_path("resource/VERSION")
+
+    if not os.path.exists(version_file_path):
+        return "NULL"
+
+    with open(version_file_path, "r", encoding="utf8") as f:
+        return "".join(f.readlines()).strip()
+
 
 NETWORK_MAP = {
     'CNNX': CNNNetwork.CNNX,
@@ -156,6 +175,7 @@ class ModelConfig:
     """FIELD PARAM - IMAGE"""
     field_root: dict
     category_param: list or str
+    category_param_text: str
     image_channel: int
     image_width: int
     image_height: int
@@ -280,7 +300,10 @@ class ModelConfig:
         """FIELD PARAM - IMAGE"""
         self.field_root = self.conf['FieldParam']
         self.category_param = self.field_root.get('Category')
-
+        if isinstance(self.category_param, list):
+            self.category_param_text = json.dumps(self.category_param, ensure_ascii=False)
+        elif isinstance(self.category_param, str):
+            self.category_param_text = self.category_param
         self.image_channel = self.field_root.get('ImageChannel')
         self.image_width = self.field_root.get('ImageWidth')
         self.image_height = self.field_root.get('ImageHeight')
@@ -334,7 +357,7 @@ class ModelConfig:
         self.trains_end_cost = self.trains_end_cost if self.trains_end_cost else 1
         self.trains_end_epochs = self.trains_root.get('EndEpochs')
         self.trains_end_epochs = self.trains_end_epochs if self.trains_end_epochs else 2
-        self.trains_learning_rate = self.trains_root.get('LearningRate')
+        self.trains_learning_rate: float = float(self.trains_root.get('LearningRate'))
         self.batch_size = self.trains_root.get('BatchSize')
         self.batch_size = self.batch_size if self.batch_size else 64
         self.validation_batch_size = self.trains_root.get('ValidationBatchSize')
@@ -589,10 +612,17 @@ class ModelConfig:
 
     def dataset_increasing_name(self, mode: RunMode):
         dataset_group = os.listdir(self.dataset_root_path)
-        if len(dataset_group) < 1:
+        if len([i for i in dataset_group if i.startswith(mode.value)]) < 1:
             return "Trains.0.tfrecords" if mode == RunMode.Trains else "Validation.0.tfrecords"
         name_split = [i.split(".") for i in dataset_group if mode.value in i]
-        last_index = max([int(i[1]) for i in name_split])
+        if not name_split:
+            name_split = [mode.value, "0", ".tfrecords"]
+        try:
+            last_index = max([int(i[1]) for i in name_split])
+        except ValueError as e:
+            print(e)
+            last_index = -1
+
         current_index = last_index + 1
         name_prefix = name_split[0][0]
         name_suffix = name_split[0][2]
@@ -614,6 +644,11 @@ class ModelConfig:
             self.category_param = json.dumps(argv.get('Category'), ensure_ascii=False)
         else:
             self.category_param = argv.get('Category')
+
+        if isinstance(self.category_param, list):
+            self.category_param_text = json.dumps(self.category_param, ensure_ascii=False)
+        elif isinstance(self.category_param, str):
+            self.category_param_text = self.category_param
 
         self.resize = argv.get('Resize')
         self.image_channel = argv.get('ImageChannel')

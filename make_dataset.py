@@ -68,7 +68,7 @@ class DataSets:
                     if labels:
                         labels = labels.group()
                     else:
-                        tf.logging.warning('invalid filename {}, ignored.'.format(file_name))
+                        tf.compat.v1.logging.warning('invalid filename {}, ignored.'.format(file_name))
                         continue
                         # raise NameError('invalid filename {}'.format(file_name))
                     labels = labels.encode('utf-8')
@@ -173,6 +173,12 @@ class DataSets:
 
                 train_label_file = os.path.join(os.path.dirname(trains_path[0]), "train.txt")
                 val_label_file = os.path.join(os.path.dirname(validation_path[0]), "val.txt")
+
+                if not os.path.exists(train_label_file) or not os.path.exists(val_label_file):
+                    msg("Train or validation label file not found!")
+                    if callback:
+                        callback()
+                    return
 
                 with open(train_label_file, "r", encoding="utf8") as f_train:
                     train_label_line = f_train.readlines()
